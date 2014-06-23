@@ -1760,9 +1760,11 @@ static void show_usage_and_exit(int status) {
     exit(status);
 }
 
-static void parse_arg(int key, char *arg) {
+static void parse_arg (int key, char *arg, char *pname)
+{
     char *p;
-    int v, i;
+    int v;
+    struct pool_details *pool;
 
     switch (key) {
     case 'a':
@@ -1800,11 +1802,7 @@ static void parse_arg(int key, char *arg) {
         opt_debug = true;
         break;
     case 'p':
-        free(rpc_pass);
-        rpc_pass = strdup(arg);
-        break;
-    case 'P':
-        opt_protocol = true;
+        add_pool_pass(pools, gpool, arg);
         break;
     case 'r':
         v = atoi(arg);
@@ -1837,45 +1835,26 @@ static void parse_arg(int key, char *arg) {
         opt_n_threads = v;
         break;
     case 'u':
-        free(rpc_user);
-        rpc_user = strdup(arg);
+        add_pool_user(pools, gpool, arg);
         break;
-    case 'o': /* --url */
+    case 'o':           /* --url */
+        pool = gpool;
         p = strstr(arg, "://");
         if (p) {
-            if (strncasecmp(arg, "http://", 7)
-                    && strncasecmp(arg, "https://", 8)
-                    && strncasecmp(arg, "stratum+tcp://", 14))
+            if (strncasecmp(arg, "http://", 7) && strncasecmp(arg, "https://", 8) &&
+                    strncasecmp(arg, "stratum+tcp://", 14))
                 show_usage_and_exit(1);
-            free(rpc_url);
-            rpc_url = strdup(arg);
+            add_pool_url(pools, gpool, arg);
         } else {
             if (!strlen(arg) || *arg == '/')
                 show_usage_and_exit(1);
-            free(rpc_url);
-            rpc_url = malloc(strlen(arg) + 8);
+            char *rpc_url = malloc(strlen(arg) + 8);
             sprintf(rpc_url, "http://%s", arg);
+            add_pool_url(pools, gpool, rpc_url);
+            free(rpc_url);
         }
-        p = strrchr(rpc_url, '@');
-        if (p) {
-            char *sp, *ap;
-            *p = '\0';
-            ap = strstr(rpc_url, "://") + 3;
-            sp = strchr(ap, ':');
-            if (sp) {
-                free(rpc_userpass);
-                rpc_userpass = strdup(ap);
-                free(rpc_user);
-                rpc_user = calloc(sp - ap + 1, 1);
-                strncpy(rpc_user, ap, sp - ap);
-                free(rpc_pass);
-                rpc_pass = strdup(sp + 1);
-            } else {
-                free(rpc_user);
-                rpc_user = strdup(ap);
-            }
-            memmove(ap, p + 1, strlen(p + 1) + 1);
-        }
+        if(pool == NULL)
+            pool = gpool;
         have_stratum = !opt_benchmark && !strncasecmp(rpc_url, "stratum", 7);
         break;
     case 'O': /* --userpass */
@@ -1937,7 +1916,7 @@ static void parse_arg(int key, char *arg) {
     }
 }
 
-static void parse_config(void) {
+static void parse_config(char *pname)
     int i;
     json_t *val;
 
@@ -1962,8 +1941,60 @@ static void parse_config(void) {
             free(s);
         } else if (!options[i].has_arg && json_is_true(val))
             parse_arg(options[i].val, "");
+        else if(json_is_array(val))
+        {
+            if(options[i].val == '\0')
+            {
+                for(j = 0; j < json_array_size(val); j++)
+                {
+                    json_t *obj, *value;
+                    obj = json_array_get(val, j);
+                    for (k = 0; k < ARRAY_SIZE(options); k++)
+                    {
+                        if (!options[k].name)
+                            break;
+                        value = json_object_get(obj, options[k].name);
+                        if(!value || !json_is_string(value))
+                            continue;
+                        char *s = strdup(json_string_value(value));
+                        if (!s)
+                            continue;
+                        parse_arg(options[k].val, s, pname);
+                        free(s);
+                    }
+                }
+            }
+            else
+            {
+                char *s;
+                const char *bit;
+                int len;
+                json_t *value = json_array_get(val, 0);
+                if(!value || !json_is_string(value))
+                    continue;
+                bit = json_string_value(value);
+                s = strdup(bit);
+                len = strlen(bit) + 1;
+                for(j = 1; j < json_array_size(val); j++)
+                {
+                    value = json_array_get(val, j);
+                    if(!value || !json_is_string(value))
+                        continue;
+                    bit = json_string_value(value);
+                    len += strlen(bit) + 1;
+                    s = realloc(s, len);
+                    strncat(strncat(s, ",", len), bit, len);
+                }
+                parse_arg(options[i].val, s, pname);
+                free(s);
+            }
+        }
         else
-            applog(LOG_ERR, "JSON option %s invalid", options[i].name);
+        {
+            fprintf(stderr, "%s: invalid argument for option '%s'\n",
+                pname, options[i].name);
+            exit(1);
+        }
     }
 }
 
@@ -1979,7 +2010,7 @@ static void parse_cmdline(int argc, char *argv[]) {
         if (key < 0)
             break;
 
-        parse_arg(key, optarg);
+        parse_arg(key, optarg, argv[0]);
     }
     if (optind < argc) {
         fprintf(stderr, "%s: unsupported non-option argument '%s'\n", argv[0],
@@ -1987,7 +2018,7 @@ static void parse_cmdline(int argc, char *argv[]) {
         show_usage_and_exit(1);
     }
 
-    parse_config();
+    parse_config(argv[0]);
 }
 
 #ifndef WIN32

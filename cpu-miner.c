@@ -295,6 +295,7 @@ struct work {
     uint32_t target[8];
     char job_id[128];
     uint32_t work_id;
+    size_t xnonce2_len;
     unsigned char xnonce2[8];
     unsigned short thr_id;
 };
@@ -632,17 +633,17 @@ json_t *json_rpc2_call(CURL *curl, const char *url,
 }
 
 static inline void work_free(struct work *w) {
-    free(w->job_id);
-    free(w->xnonce2);
+    free(w.job_id);
+    free(w.xnonce2);
 }
 
 static inline void work_copy(struct work *dest, const struct work *src) {
     memcpy(dest, src, sizeof(struct work));
-    if (src->job_id)
-        dest->job_id = strdup(src->job_id);
-    if (src->xnonce2) {
-        dest->xnonce2 = malloc(src->xnonce2_len);
-        memcpy(dest->xnonce2, src->xnonce2, src->xnonce2_len);
+    if (src.job_id)
+        dest.job_id = strdup(src.job_id);
+    if (src.xnonce2) {
+        dest.xnonce2 = malloc(src.xnonce2_len);
+        memcpy(dest.xnonce2, src.xnonce2, src.xnonce2_len);
     }
 }
 
@@ -734,9 +735,9 @@ bool rpc2_job_decode(const json_t *job, struct work *work) {
         memcpy(work->data, rpc2_blob, rpc2_bloblen);
         memset(work->target, 0xff, sizeof(work->target));
         work->target[7] = rpc2_target;
-        if (work->job_id)
-            free(work->job_id);
-        work->job_id = strdup(rpc2_job_id);
+        if (work.job_id)
+            free(work.job_id);
+        work.job_id = strdup(rpc2_job_id);
     }
     return true;
 
@@ -863,7 +864,7 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
     pthread_mutex_unlock(&pool_lock);
 
     /* pass if the previous hash is not the current previous hash */
-    if (!submit_old && memcmp(work->data + 1, g_work.data + 1, 32)) {
+    if (!submit_old && memcmp(work->data + 1, g_work->data + 1, 32)) {
         if (opt_debug)
             applog(LOG_DEBUG, "DEBUG: stale work detected, discarding");
         return true;
@@ -884,17 +885,17 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
             char *hashhex = bin2hex(hash, 32);
             snprintf(s, JSON_BUF_LEN,
                     "{\"method\": \"submit\", \"params\": {\"id\": \"%s\", \"job_id\": \"%s\", \"nonce\": \"%s\", \"result\": \"%s\"}, \"id\":1}\r\n",
-                    pool->rpc_user, work->job_id, noncestr, hashhex);
+                    pool->rpc_user, work.job_id, noncestr, hashhex);
             free(hashhex);
         } else {
             le32enc(&ntime, work->data[17]);
             le32enc(&nonce, work->data[19]);
             ntimestr = bin2hex((const unsigned char *) (&ntime), 4);
             noncestr = bin2hex((const unsigned char *) (&nonce), 4);
-            xnonce2str = bin2hex(work->xnonce2, work->xnonce2_len);
+            xnonce2str = bin2hex(work.xnonce2, work.xnonce2_len);
             snprintf(s, JSON_BUF_LEN,
                     "{\"method\": \"mining.submit\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\":4}",
-                    pool->rpc_user, work->job_id, xnonce2str, ntimestr, noncestr);
+                    pool->rpc_user, work.job_id, xnonce2str, ntimestr, noncestr);
             free(ntimestr);
             free(xnonce2str);
         }
@@ -917,7 +918,7 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
             char *hashhex = bin2hex(hash, 32);
             snprintf(s, JSON_BUF_LEN,
                     "{\"method\": \"submit\", \"params\": {\"id\": \"%s\", \"job_id\": \"%s\", \"nonce\": \"%s\", \"result\": \"%s\"}, \"id\":1}\r\n",
-                    pool->rpc_user, work->job_id, noncestr, hashhex);
+                    pool->rpc_user, work.job_id, noncestr, hashhex);
             free(noncestr);
             free(hashhex);
 
@@ -1369,7 +1370,7 @@ static void *miner_thread(void *userdata) {
 		#endif
 	}
 	
-    uint32_t *nonceptr = (uint32_t*) (((char*)work.data) + (jsonrpc_2 ? 39 : 76));
+    uint32_t *nonceptr = (uint32_t*) (((char*)work->data) + (jsonrpc_2 ? 39 : 76));
 
     while (1) {
         unsigned long hashes_done;
@@ -1382,9 +1383,9 @@ static void *miner_thread(void *userdata) {
                 sleep(1);
             pthread_mutex_lock(&g_work_lock);
             if ((*nonceptr) >= end_nonce
-           	    && !(jsonrpc_2 ? memcmp(work.data, g_work.data, 39) ||
-           	            memcmp(((uint8_t*) work.data) + 43, ((uint8_t*) g_work.data) + 43, 33)
-           	      : memcmp(work.data, g_work.data, 76)))
+           	    && !(jsonrpc_2 ? memcmp(work->data, g_work->data, 39) ||
+           	            memcmp(((uint8_t*) work->data) + 43, ((uint8_t*) g_work->data) + 43, 33)
+           	      : memcmp(work->data, g_work->data, 76)))
                 stratum_gen_work(stratum, &g_work);
         } else {
             /* obtain new work from internal workio thread */
@@ -1406,10 +1407,10 @@ static void *miner_thread(void *userdata) {
                 continue;
             }
         }
-        if (jsonrpc_2 ? memcmp(work.data, g_work.data, 39) || memcmp(((uint8_t*) work.data) + 43, ((uint8_t*) g_work.data) + 43, 33) : memcmp(work.data, g_work.data, 76)) {
+        if (jsonrpc_2 ? memcmp(work->data, g_work->data, 39) || memcmp(((uint8_t*) work->data) + 43, ((uint8_t*) g_work->data) + 43, 33) : memcmp(work->data, g_work->data, 76)) {
             work_free(&work);
             work_copy(&work, &g_work);
-            nonceptr = (uint32_t*) (((char*)work.data) + (jsonrpc_2 ? 39 : 76));
+            nonceptr = (uint32_t*) (((char*)work->data) + (jsonrpc_2 ? 39 : 76));
             *nonceptr = 0xffffffffU / opt_n_threads * thr_id;
         } else
             ++(*nonceptr);
@@ -1445,7 +1446,7 @@ static void *miner_thread(void *userdata) {
         gettimeofday(&tv_start, NULL );
 
         /* scan nonces for a proof-of-work hash */
-            rc = scanhash_cryptonight(thr_id, work.data, work.target,
+            rc = scanhash_cryptonight(thr_id, work->data, work->target,
                     max_nonce, &hashes_done, persistentctx);
 
         /* record scanhash elapsed time */
@@ -1777,7 +1778,7 @@ login:
                 }
                 applog(LOG_INFO, "New Job_id: %s Diff: %d Work_id: %08x", stratum->job.job_id, (int) (stratum->job.diff), work_id);
                 strcpy(g_work.job_id, stratum->job.job_id);
-                diff_to_target(g_work.target, stratum->job.diff / 65536.0);
+                diff_to_target(g_work->target, stratum->job.diff / 65536.0);
                 g_work.work_id = work_id;
                 time(&g_work_time);
                 pthread_mutex_unlock(&stratum->work_lock);
@@ -1800,7 +1801,7 @@ login:
                 }
                 applog(LOG_INFO, "New Job_id: %s Diff: %d Work_id: %08x", stratum->job.job_id, (int) (stratum->job.diff), work_id);
                 strcpy(g_work.job_id, stratum->job.job_id);
-                diff_to_target(g_work.target, stratum->job.diff / 65536.0);
+                diff_to_target(g_work->target, stratum->job.diff / 65536.0);
                 g_work.work_id = work_id;
                 time(&g_work_time);
                 pthread_mutex_unlock(&stratum->work_lock);
@@ -1838,7 +1839,7 @@ login:
                 work_id = (timestr.tv_sec & 0xffff) << 16 | (timestr.tv_usec & 0xffff);
                 stratum->job.diff = stratum->next_diff;
                 applog(LOG_INFO, "Diff: %d Work_id: %08x", (int) (stratum->job.diff), work_id);
-                diff_to_target(g_work.target, stratum->job.diff / 65536.0);
+                diff_to_target(g_work->target, stratum->job.diff / 65536.0);
                 g_work.work_id = work_id;
                 time(&g_work_update_time);
                 time(&g_work_time);

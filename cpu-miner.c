@@ -180,6 +180,8 @@ static int rpc2_bloblen = 0;
 static uint32_t rpc2_target = 0;
 static char *rpc2_job_id = NULL;
 
+time_t time_start;
+
 pthread_mutex_t applog_lock;
 pthread_mutex_t tui_lock;
 pthread_mutex_t pool_lock;
@@ -287,6 +289,25 @@ static struct option const options[] = {
 };
 
 static bool can_work = false;
+
+struct work {
+    uint32_t data[32];
+    uint32_t target[8];
+    char job_id[128];
+    uint32_t work_id;
+    unsigned char xnonce2[8];
+    unsigned short thr_id;
+};
+
+struct work_items
+{
+    struct list_head list;
+    int thr_id;
+    uint32_t nonce;
+    uint16_t work_id;
+    uint16_t id;
+    double diff;
+};
 
 static struct work g_work;
 static time_t g_work_time;
@@ -879,7 +900,7 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
         }
         free(noncestr);
 
-        if (unlikely(!stratum_send_line(&stratum, s))) {
+        if (unlikely(!stratum_send_line(stratum, s))) {
             applog(LOG_ERR, "submit_upstream_work stratum_send_line failed");
             goto out;
         }

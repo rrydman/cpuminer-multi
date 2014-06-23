@@ -137,6 +137,33 @@ static const char *algo_names[] = {
     [ALGO_CRYPTONIGHT] = "cryptonight",
 };
 
+#define API_DEFAULT_PORT 4028
+#define API_QUEUE 16
+#define API_GET_STATS "stats"
+#define API_START_TIME "start_time"
+#define API_STOP_TIME "stop_time"
+#define API_DEVICE_SERIAL "serial"
+#define API_DEVICES "devices"
+#define API_CHIPS "chips"
+#define API_LAST_SHARE "last_share"
+#define API_ACCEPTED "accepted"
+#define API_REJECTED "rejected"
+#define API_HW_ERRORS "hw_errors"
+#define API_FREQUENCY "frequency"
+#define API_HASHRATE "hashrate"
+#define API_SHARES "shares"
+#define API_AUTOTUNE "autotune"
+#define API_POOL "pool"
+#define API_POOLS "pools"
+#define API_POOL_STATS "stats"
+#define API_POOL_STATS_ID "stats_id"
+#define API_POOL_URL "url"
+#define API_POOL_USER "user"
+#define API_POOL_PASS "pass"
+#define API_POOL_PRIORITY "priority"
+#define API_POOL_ACTIVE "active"
+#define REFRESH_INTERVAL 2
+
 bool opt_debug = false;
 bool opt_protocol = false;
 static bool opt_benchmark = false;

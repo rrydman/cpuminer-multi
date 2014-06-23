@@ -199,6 +199,7 @@ struct thr_info *thr_info;
 static int work_thr_id;
 int longpoll_thr_id = -1;
 int stratum_thr_id = -1;
+int check_pool_thr_id = -1;
 struct work_restart *work_restart = NULL;
 static struct stratum_ctx stratum;
 static char rpc2_id[64] = "";
@@ -208,6 +209,11 @@ static uint32_t rpc2_target = 0;
 static char *rpc2_job_id = NULL;
 
 pthread_mutex_t applog_lock;
+pthread_mutex_t tui_lock;
+pthread_mutex_t pool_lock;
+pthread_mutex_t check_pool_lock;
+pthread_cond_t check_pool_cond;
+pthread_mutex_t switch_pool_lock;
 static pthread_mutex_t stats_lock;
 static pthread_mutex_t rpc2_job_lock;
 static pthread_mutex_t rpc2_login_lock;
@@ -862,6 +868,11 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
     if (have_stratum) {
         uint32_t ntime, nonce;
         char *ntimestr, *noncestr, *xnonce2str;
+        struct pool_details *pool;
+        
+        pthread_mutex_lock(&pool_lock);
+        pool = get_active_pool(pools);
+        pthread_mutex_unlock(&pool_lock);
 
         if (jsonrpc_2) {
             noncestr = bin2hex(((const unsigned char*)work->data) + 39, 4);
@@ -874,7 +885,7 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
             char *hashhex = bin2hex(hash, 32);
             snprintf(s, JSON_BUF_LEN,
                     "{\"method\": \"submit\", \"params\": {\"id\": \"%s\", \"job_id\": \"%s\", \"nonce\": \"%s\", \"result\": \"%s\"}, \"id\":1}\r\n",
-                    rpc2_id, work->job_id, noncestr, hashhex);
+                    pool->rpc_user, work->job_id, noncestr, hashhex);
             free(hashhex);
         } else {
             le32enc(&ntime, work->data[17]);
@@ -884,7 +895,7 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
             xnonce2str = bin2hex(work->xnonce2, work->xnonce2_len);
             snprintf(s, JSON_BUF_LEN,
                     "{\"method\": \"mining.submit\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\":4}",
-                    rpc_user, work->job_id, xnonce2str, ntimestr, noncestr);
+                    pool->rpc_user, work->job_id, xnonce2str, ntimestr, noncestr);
             free(ntimestr);
             free(xnonce2str);
         }
@@ -907,7 +918,7 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
             char *hashhex = bin2hex(hash, 32);
             snprintf(s, JSON_BUF_LEN,
                     "{\"method\": \"submit\", \"params\": {\"id\": \"%s\", \"job_id\": \"%s\", \"nonce\": \"%s\", \"result\": \"%s\"}, \"id\":1}\r\n",
-                    rpc2_id, work->job_id, noncestr, hashhex);
+                    pool->rpc_user, work->job_id, noncestr, hashhex);
             free(noncestr);
             free(hashhex);
 

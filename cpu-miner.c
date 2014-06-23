@@ -1938,10 +1938,10 @@ static void parse_config(char *pname){
             char *s = strdup(json_string_value(val));
             if (!s)
                 break;
-            parse_arg(options[i].val, s);
+            parse_arg(options[i].val, s, pname);
             free(s);
         } else if (!options[i].has_arg && json_is_true(val))
-            parse_arg(options[i].val, "");
+            parse_arg(options[i].val, "", pname);
         else if(json_is_array(val))
         {
             if(options[i].val == '\0')

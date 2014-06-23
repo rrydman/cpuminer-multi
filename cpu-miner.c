@@ -1769,7 +1769,6 @@ static void parse_arg (int key, char *arg, char *pname)
 
     switch (key) {
     case 'a':
-        int i;
         for (i = 0; i < ARRAY_SIZE(algo_names); i++) {
             if (algo_names[i] && !strcmp(arg, algo_names[i])) {
                 //opt_algo = i;
@@ -1918,7 +1917,7 @@ static void parse_arg (int key, char *arg, char *pname)
     }
 }
 
-static void parse_config(char *pname)
+static void parse_config(char *pname){
     int i, j, k;
     json_t *val;
 
@@ -2000,7 +1999,7 @@ static void parse_config(char *pname)
     }
 }
 
-static void parse_cmdline(int argc, char *argv[]) {
+static void parse_cmdline(int argc, char *argv[]){
     int key;
 
     while (1) {

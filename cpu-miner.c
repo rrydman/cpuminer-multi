@@ -290,16 +290,6 @@ static struct option const options[] = {
 
 static bool can_work = false;
 
-struct work {
-    uint32_t data[32];
-    uint32_t target[8];
-    char *job_id;
-    uint32_t work_id;
-    size_t xnonce2_len;
-    unsigned char *xnonce2;
-    unsigned short thr_id;
-};
-
 struct work_items
 {
     struct list_head list;

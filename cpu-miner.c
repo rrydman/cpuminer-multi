@@ -1631,8 +1631,7 @@ static bool stratum_handle_response(char *buf) {
     return ret;
 }
 
-static void *stratum_thread(void *userdata)
-{
+static void *stratum_thread(void *userdata){
     char *s;
     int i, failures, restarted;
     struct timeval timestr;
@@ -1770,13 +1769,16 @@ login:
                 time(&g_work_time);
                 pthread_mutex_unlock(&stratum->work_lock);
                 pthread_mutex_unlock(&g_work_lock);
-
+            }
+        }
         if (!stratum_socket_full(stratum, 60)) {
             applog(LOG_ERR, "Stratum connection timed out");
             s = NULL;
-        } else
+        } else {
             s = stratum_recv_line(stratum);
-        if (!s) {
+        }
+        if (!s) 
+        {
             stratum_disconnect(stratum);
             applog(LOG_ERR, "Stratum connection interrupted");
             if(switch_lock)

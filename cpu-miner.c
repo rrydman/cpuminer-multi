@@ -858,10 +858,11 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
     int i;
     bool rc = false;
 
+    struct pool_details *pool;
     pthread_mutex_lock(&pool_lock);
     pool = get_active_pool(pools);
     pthread_mutex_unlock(&pool_lock);
-        
+
     /* pass if the previous hash is not the current previous hash */
     if (!submit_old && memcmp(work->data + 1, g_work.data + 1, 32)) {
         if (opt_debug)
@@ -872,9 +873,6 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
     if (have_stratum) {
         uint32_t ntime, nonce;
         char *ntimestr, *noncestr, *xnonce2str;
-        struct pool_details *pool;
-        
-
 
         if (jsonrpc_2) {
             noncestr = bin2hex(((const unsigned char*)work->data) + 39, 4);

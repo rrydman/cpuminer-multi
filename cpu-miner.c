@@ -2058,7 +2058,7 @@ static void parse_arg (int key, char *arg, char *pname)
         }
         if(pool == NULL)
             pool = gpool;
-        have_stratum = !opt_benchmark && !strncasecmp(rpc_url, "stratum", 7);
+        have_stratum = !opt_benchmark && !strncasecmp(pool->rpc_url, "stratum", 7);
         break;
     case 'O': /* --userpass */
         p = strchr(arg, ':');

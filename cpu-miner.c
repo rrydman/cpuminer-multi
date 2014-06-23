@@ -51,6 +51,7 @@
 #endif
 
 #define PROGRAM_NAME		"minerd"
+#define DEF_RPC_URL        "http://127.0.0.1:9332/"
 #define LP_SCANTIME		60
 #define JSON_BUF_LEN 345
 
@@ -137,6 +138,7 @@ static const char *algo_names[] = {
     [ALGO_CRYPTONIGHT] = "cryptonight",
 };
 
+// Below maybe not needed? Have not tested
 #define API_DEFAULT_PORT 4028
 #define API_QUEUE 16
 #define API_GET_STATS "stats"

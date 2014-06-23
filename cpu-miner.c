@@ -11,6 +11,7 @@
 #include "cpuminer-config.h"
 #define _GNU_SOURCE
 
+#include <curses.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,6 +42,7 @@
 #include "compat.h"
 #include "miner.h"
 #include "cryptonight.h"
+ #include "elist.h"
 
 #if defined __unix__ && (!defined __APPLE__)
 #include <sys/mman.h>
@@ -251,6 +253,7 @@ static struct option const options[] = {
         { "benchmark", 0, NULL, 1005 },
         { "cert", 1, NULL, 1001 },
         { "config", 1, NULL, 'c' },
+        { "pools", 1, NULL, '\0' },
         { "debug", 0, NULL, 'D' },
         { "help", 0, NULL, 'h' },
         { "no-longpoll", 0, NULL, 1003 },
@@ -278,6 +281,257 @@ static struct option const options[] = {
 static struct work g_work;
 static time_t g_work_time;
 static pthread_mutex_t g_work_lock;
+
+// Begin Pool section from cpuminer-gc3555
+struct pool_stats
+{
+    struct list_head list;
+    unsigned int time_start;
+    unsigned int time_stop;
+    unsigned int accepted;
+    unsigned int rejected;
+    unsigned long long shares;
+    unsigned int id;
+};
+
+struct pool_details
+{
+    struct list_head list;
+    char *rpc_url;
+    char *rpc_userpass;
+    char *rpc_user, *rpc_pass;
+    uint16_t prio;
+    bool active;
+    bool tried;
+    bool usable;
+    unsigned int id;
+    struct pool_stats stats;
+};
+
+static struct pool_details *gpool;
+static struct pool_details *pools;
+static bool must_switch = false;
+
+static struct pool_details* init_pool_details();
+static void add_pool(struct pool_details *pools, struct pool_details *pool);
+static void set_active_pool(struct pool_details *pools, struct pool_details *active_pool, bool active);
+static struct pool_details* get_active_pool(struct pool_details *pools);
+static struct pool_details* get_main_pool(struct pool_details *pools);
+static struct pool_details* get_next_pool(struct pool_details *pools);
+
+static struct pool_details* init_pool_details()
+{
+    struct pool_details *pools = calloc(1, sizeof(struct pool_details));
+    INIT_LIST_HEAD(&pools->list);
+    INIT_LIST_HEAD(&pools->stats.list);
+    return pools;
+}
+
+static struct pool_details* new_pool(bool empty)
+{
+    struct pool_details *pool = calloc(1, sizeof(struct pool_details));
+    INIT_LIST_HEAD(&pool->stats.list);
+    if(empty)
+    {
+        pool->rpc_url = DEF_RPC_URL;
+        pool->rpc_user = strdup("");
+        pool->rpc_pass = strdup("");
+    }
+    return pool;
+}
+
+static void add_pool_url(struct pool_details *pools, struct pool_details *pool, char *str)
+{
+    if(pool == NULL)
+        pool = new_pool(false);
+    if(pool != gpool)
+        gpool = pool;
+    if(pool->rpc_url != NULL)
+        free(pool->rpc_url);
+    pool->rpc_url = strdup(str);
+    if(pool->rpc_url && pool->rpc_user && pool->rpc_pass)
+        add_pool(pools, pool);
+}
+
+static void add_pool_user(struct pool_details *pools, struct pool_details *pool, char *str)
+{
+    if(pool == NULL)
+        pool = new_pool(false);
+    if(pool != gpool)
+        gpool = pool;
+    if(pool->rpc_user != NULL)
+        free(pool->rpc_user);
+    pool->rpc_user = strdup(str);
+    if(pool->rpc_url && pool->rpc_user && pool->rpc_pass)
+        add_pool(pools, pool);
+}
+
+static void add_pool_pass(struct pool_details *pools, struct pool_details *pool, char *str)
+{
+    if(pool == NULL)
+        pool = new_pool(false);
+    if(pool != gpool)
+        gpool = pool;
+    if(pool->rpc_pass != NULL)
+        free(pool->rpc_pass);
+    pool->rpc_pass = strdup(str);
+    if(pool->rpc_url && pool->rpc_user && pool->rpc_pass)
+        add_pool(pools, pool);
+}
+
+static bool check_pool_alive(struct pool_details *pool)
+{
+    bool alive = true;
+    struct stratum_ctx *stratum = calloc(1, sizeof(struct stratum_ctx));
+    pthread_mutex_init(&stratum->sock_lock, NULL);
+    pthread_mutex_init(&stratum->work_lock, NULL);
+    stratum->url = pool->rpc_url;
+    if (!stratum_connect(stratum, stratum->url) ||
+        !stratum_subscribe(stratum) ||
+        !stratum_authorize(stratum, pool->rpc_user, pool->rpc_pass))
+    {
+        alive = false;
+    }
+    stratum_disconnect(stratum);
+    free(stratum);
+    return alive;
+}
+
+static void add_pool(struct pool_details *pools, struct pool_details *pool)
+{
+    pool->rpc_userpass = malloc(strlen(pool->rpc_user) + strlen(pool->rpc_pass) + 2);
+    sprintf(pool->rpc_userpass, "%s:%s", pool->rpc_user, pool->rpc_pass);
+    pool->usable = true;
+    if(!list_empty(&pools->list))
+    {
+        pool->prio = ++(list_entry(&pools->list.prev, struct pool_details, list))->prio;
+    }
+    else
+    {
+        pool->active = true;
+        pool->tried = true;
+    }
+    list_add_tail(&pool->list, &pools->list);
+    gpool = NULL;
+}
+
+static struct pool_stats* new_pool_stats(struct pool_details *pool)
+{
+    struct pool_stats *pool_stats;
+    pool_stats = calloc(1, sizeof(struct pool_stats));
+    pool->id++;
+    pool_stats->id = pool->id;
+    list_add(&pool_stats->list, &pool->stats.list);
+    return pool_stats;
+}
+
+static struct pool_stats* get_pool_stats(struct pool_details *pool)
+{
+    struct pool_stats *pool_stats, *ret = NULL;
+    list_for_each_entry(pool_stats, &pool->stats.list, list)
+    {
+        if(pool->id == pool_stats->id)
+        {
+            ret = pool_stats;
+            break;
+        }
+    }
+    return ret;
+}
+
+static int get_pool_count(struct pool_details *pools)
+{
+    struct pool_details *pool;
+    int count = 0;
+    pool = list_entry(&pools->list.prev, struct pool_details, list);
+    if(pool != NULL)
+    {
+        count = pool->prio + 1;
+    }
+    return count;
+}
+
+static void set_active_pool(struct pool_details *pools, struct pool_details *active_pool, bool active)
+{
+    struct pool_details *pool;
+    list_for_each_entry(pool, &pools->list, list)
+    {
+        pool->active = false;
+    }
+    active_pool->active = active;
+    active_pool->tried = true;
+}
+
+static struct pool_details* get_pool(struct pool_details *pools, int prio)
+{
+    struct pool_details *pool, *ret = NULL;
+    list_for_each_entry(pool, &pools->list, list)
+    {
+        if(pool->prio == prio)
+        {
+            ret = pool;
+            break;
+        }
+    }
+    return ret;
+}
+
+static struct pool_details* get_active_pool(struct pool_details *pools)
+{
+    struct pool_details *pool, *ret = NULL;
+    list_for_each_entry(pool, &pools->list, list)
+    {
+        if(pool->usable && pool->active)
+        {
+            ret = pool;
+            break;
+        }
+    }
+    return ret;
+}
+
+static struct pool_details* get_main_pool(struct pool_details *pools)
+{
+    struct pool_details *pool, *ret = NULL;
+    pool = get_pool(pools, 0);
+    if(pool != NULL && pool->usable)
+        ret = pool;
+    return ret;
+}
+
+static void clear_pool_tried(struct pool_details *pools)
+{
+    struct pool_details *pool;
+    int tried = 0;
+    list_for_each_entry(pool, &pools->list, list)
+    {
+        if(pool->tried)
+            tried++;
+    }
+    if(tried == (list_entry(&pools->list.prev, struct pool_details, list))->prio + 1)
+    {
+        list_for_each_entry(pool, &pools->list, list)
+        {
+            pool->tried = false;
+        }
+    }
+}
+
+static struct pool_details* get_next_pool(struct pool_details *pools)
+{
+    struct pool_details *pool, *ret = NULL;
+    clear_pool_tried(pools);
+    list_for_each_entry(pool, &pools->list, list)
+    {
+        if(pool->usable && !pool->tried)
+        {
+            ret = pool;
+            break;
+        }
+    }
+    return ret;
+}
+// End Pool section
 
 static bool rpc2_login(CURL *curl);
 static void workio_cmd_free(struct workio_cmd *wc);

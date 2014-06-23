@@ -2058,21 +2058,22 @@ static void parse_arg (int key, char *arg, char *pname)
         }
         if(pool == NULL)
             pool = gpool;
-        have_stratum = !opt_benchmark && !strncasecmp(pool->rpc_url, "stratum", 7);
+        have_stratum = !strncasecmp(pool->rpc_url, "stratum", 7);
         break;
-    case 'O': /* --userpass */
+    case 'O':           /* --userpass */
         p = strchr(arg, ':');
         if (!p)
             show_usage_and_exit(1);
-        free(rpc_userpass);
-        rpc_userpass = strdup(arg);
-        free(rpc_user);
-        rpc_user = calloc(p - arg + 1, 1);
+        char *rpc_user = calloc(p - arg + 1, 1);
         strncpy(rpc_user, arg, p - arg);
+        char *rpc_pass = strdup(p + 1);
+        add_pool_user(pools, gpool, rpc_user);
+        add_pool_pass(pools, gpool, rpc_pass);
+        free(rpc_user);
         free(rpc_pass);
-        rpc_pass = strdup(p + 1);
         break;
-    case 'x': /* --proxy */
+    /* Disabled for now
+    case 'x': // --proxy 
         if (!strncasecmp(arg, "socks4://", 9))
             opt_proxy_type = CURLPROXY_SOCKS4;
         else if (!strncasecmp(arg, "socks5://", 9))
@@ -2088,6 +2089,7 @@ static void parse_arg (int key, char *arg, char *pname)
         free(opt_proxy);
         opt_proxy = strdup(arg);
         break;
+    */
     case 1001:
         free(opt_cert);
         opt_cert = strdup(arg);

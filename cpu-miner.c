@@ -173,7 +173,7 @@ int longpoll_thr_id = -1;
 int stratum_thr_id = -1;
 int check_pool_thr_id = -1;
 struct work_restart *work_restart = NULL;
-static struct stratum_ctx stratum;
+static struct stratum_ctx *stratum;
 static char rpc2_id[64] = "";
 static char *rpc2_blob = NULL;
 static int rpc2_bloblen = 0;
@@ -286,9 +286,15 @@ static struct option const options[] = {
         { 0, 0, 0, 0 }
 };
 
+static bool can_work = false;
+
 static struct work g_work;
 static time_t g_work_time;
+static time_t g_work_update_time;
 static pthread_mutex_t g_work_lock;
+
+static struct work_items *work_items;
+static pthread_mutex_t work_items_lock;
 
 // Begin Pool section from cpuminer-gc3555
 struct pool_stats
@@ -1588,6 +1594,15 @@ static void *longpoll_thread(void *userdata) {
         curl_easy_cleanup(curl);
 
     return NULL ;
+}
+
+static void clean_stratum(struct stratum_ctx *sctx)
+{
+    if(sctx->curl)
+        stratum_disconnect(sctx);
+    memset(sctx, 0, sizeof(struct stratum_ctx));
+    pthread_mutex_init(&sctx->sock_lock, NULL);
+    pthread_mutex_init(&sctx->work_lock, NULL);
 }
 
 static bool stratum_handle_response(char *buf) {

@@ -295,6 +295,7 @@ struct work {
     uint32_t target[8];
     char job_id[128];
     uint32_t work_id;
+    size_t xnonce2_len;
     unsigned char xnonce2[8];
     unsigned short thr_id;
 };

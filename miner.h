@@ -264,7 +264,6 @@ struct stratum_ctx {
 	unsigned char *xnonce1;
 	size_t xnonce2_size;
 	struct stratum_job job;
-	struct work work;
 	pthread_mutex_t work_lock;
 };
 

@@ -1764,7 +1764,7 @@ static void show_usage_and_exit(int status) {
 static void parse_arg (int key, char *arg, char *pname)
 {
     char *p;
-    int v;
+    int v,i;
     struct pool_details *pool;
 
     switch (key) {

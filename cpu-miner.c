@@ -139,34 +139,6 @@ static const char *algo_names[] = {
     [ALGO_CRYPTONIGHT] = "cryptonight",
 };
 
-// Below maybe not needed? Have not tested
-#define API_DEFAULT_PORT 4028
-#define API_QUEUE 16
-#define API_GET_STATS "stats"
-#define API_START_TIME "start_time"
-#define API_STOP_TIME "stop_time"
-#define API_DEVICE_SERIAL "serial"
-#define API_DEVICES "devices"
-#define API_CHIPS "chips"
-#define API_LAST_SHARE "last_share"
-#define API_ACCEPTED "accepted"
-#define API_REJECTED "rejected"
-#define API_HW_ERRORS "hw_errors"
-#define API_FREQUENCY "frequency"
-#define API_HASHRATE "hashrate"
-#define API_SHARES "shares"
-#define API_AUTOTUNE "autotune"
-#define API_POOL "pool"
-#define API_POOLS "pools"
-#define API_POOL_STATS "stats"
-#define API_POOL_STATS_ID "stats_id"
-#define API_POOL_URL "url"
-#define API_POOL_USER "user"
-#define API_POOL_PASS "pass"
-#define API_POOL_PRIORITY "priority"
-#define API_POOL_ACTIVE "active"
-#define REFRESH_INTERVAL 2
-
 bool opt_debug = false;
 bool opt_protocol = false;
 static bool opt_benchmark = false;
@@ -974,15 +946,20 @@ static bool get_upstream_work(CURL *curl, struct work *work) {
     json_t *val;
     bool rc;
     struct timeval tv_start, tv_end, diff;
+    struct pool_details *pool;
+    
+    pthread_mutex_lock(&pool_lock);
+    pool = get_active_pool(pools);
+    pthread_mutex_unlock(&pool_lock);
 
     gettimeofday(&tv_start, NULL );
 
     if(jsonrpc_2) {
         char s[128];
         snprintf(s, 128, "{\"method\": \"getjob\", \"params\": {\"id\": \"%s\"}, \"id\":1}\r\n", rpc2_id);
-        val = json_rpc2_call(curl, rpc_url, rpc_userpass, s, NULL, 0);
+        val = json_rpc2_call(curl, pool->rpc_url, pool->rpc_userpass, s, NULL, 0);
     } else {
-        val = json_rpc_call(curl, rpc_url, rpc_userpass, rpc_req, NULL, 0);
+        val = json_rpc_call(curl, pool->rpc_url, pool->rpc_userpass, rpc_req, NULL, 0);
     }
     gettimeofday(&tv_end, NULL );
 
@@ -1009,6 +986,12 @@ static bool get_upstream_work(CURL *curl, struct work *work) {
 }
 
 static bool rpc2_login(CURL *curl) {
+    struct pool_details *pool;
+    
+    pthread_mutex_lock(&pool_lock);
+    pool = get_active_pool(pools);
+    pthread_mutex_unlock(&pool_lock);
+
     if(!jsonrpc_2) {
         return false;
     }
@@ -1020,7 +1003,7 @@ static bool rpc2_login(CURL *curl) {
     snprintf(s, JSON_BUF_LEN, "{\"method\": \"login\", \"params\": {\"login\": \"%s\", \"pass\": \"%s\", \"agent\": \"cpuminer-multi/0.1\"}, \"id\": 1}", rpc_user, rpc_pass);
 
     gettimeofday(&tv_start, NULL );
-    val = json_rpc_call(curl, rpc_url, rpc_userpass, s, NULL, 0);
+    val = json_rpc_call(curl, pool->rpc_url, pool->rpc_userpass, s, NULL, 0);
     gettimeofday(&tv_end, NULL );
 
     if (!val)
@@ -1375,7 +1358,7 @@ static void *miner_thread(void *userdata) {
            	    && !(jsonrpc_2 ? memcmp(work.data, g_work.data, 39) ||
            	            memcmp(((uint8_t*) work.data) + 43, ((uint8_t*) g_work.data) + 43, 33)
            	      : memcmp(work.data, g_work.data, 76)))
-                stratum_gen_work(&stratum, &g_work);
+                stratum_gen_work(stratum, &g_work);
         } else {
             /* obtain new work from internal workio thread */
             pthread_mutex_lock(&g_work_lock);
@@ -1501,6 +1484,12 @@ static void *longpoll_thread(void *userdata) {
     char *copy_start, *hdr_path = NULL, *lp_url = NULL;
     bool need_slash = false;
 
+    struct pool_details *pool;
+    
+    pthread_mutex_lock(&pool_lock);
+    pool = get_active_pool(pools);
+    pthread_mutex_unlock(&pool_lock);
+
     curl = curl_easy_init();
     if (unlikely(!curl)) {
         applog(LOG_ERR, "CURL initialization failed");
@@ -1520,14 +1509,14 @@ static void *longpoll_thread(void *userdata) {
     /* absolute path, on current server */
     else {
         copy_start = (*hdr_path == '/') ? (hdr_path + 1) : hdr_path;
-        if (rpc_url[strlen(rpc_url) - 1] != '/')
+        if (pool->rpc_url[strlen(pool->rpc_url) - 1] != '/')
             need_slash = true;
 
-        lp_url = malloc(strlen(rpc_url) + strlen(copy_start) + 2);
+        lp_url = malloc(strlen(pool->rpc_url) + strlen(copy_start) + 2);
         if (!lp_url)
             goto out;
 
-        sprintf(lp_url, "%s%s%s", rpc_url, need_slash ? "/" : "", copy_start);
+        sprintf(lp_url, "%s%s%s", pool->rpc_url, need_slash ? "/" : "", copy_start);
     }
 
     applog(LOG_INFO, "Long-polling activated for %s", lp_url);
@@ -1545,9 +1534,9 @@ static void *longpoll_thread(void *userdata) {
             char s[128];
             snprintf(s, 128, "{\"method\": \"getjob\", \"params\": {\"id\": \"%s\"}, \"id\":1}\r\n", rpc2_id);
             pthread_mutex_unlock(&rpc2_login_lock);
-            val = json_rpc2_call(curl, rpc_url, rpc_userpass, s, &err, JSON_RPC_LONGPOLL);
+            val = json_rpc2_call(curl, pool->rpc_url, pool->rpc_userpass, s, &err, JSON_RPC_LONGPOLL);
         } else {
-            val = json_rpc_call(curl, rpc_url, rpc_userpass, rpc_req, &err, JSON_RPC_LONGPOLL);
+            val = json_rpc_call(curl, pool->rpc_url, pool->rpc_userpass, rpc_req, &err, JSON_RPC_LONGPOLL);
         }
         if (have_stratum) {
             if (val)
@@ -1642,80 +1631,253 @@ static bool stratum_handle_response(char *buf) {
     return ret;
 }
 
-static void *stratum_thread(void *userdata) {
-    struct thr_info *mythr = userdata;
+static void *stratum_thread(void *userdata)
+{
     char *s;
+    int i, failures, restarted;
+    struct timeval timestr;
+    struct pool_details *pool, *main_pool;
+    struct pool_stats *pool_stats;
+    bool switch_lock = false, switched = false, reconnect = false;
+    uint32_t work_id;
 
-    stratum.url = tq_pop(mythr->q, NULL );
-    if (!stratum.url)
-        goto out;
-    applog(LOG_INFO, "Starting Stratum on %s", stratum.url);
-
+    gettimeofday(&timestr, NULL);
+    work_id = (timestr.tv_sec & 0xffff) << 16 | (timestr.tv_usec & 0xffff);
+    g_work_time = 0;
+    g_work_update_time = 0;
+    
     while (1) {
-        int failures = 0;
-
-        while (!stratum.curl) {
+login:
+        switch_lock = true;
+        pthread_mutex_lock(&switch_pool_lock);
+        failures = 0;
+        if(must_switch || switched)
+        {
+            must_switch = false;
+            switched = false;
             pthread_mutex_lock(&g_work_lock);
-            g_work_time = 0;
-            pthread_mutex_unlock(&g_work_lock);
             restart_threads();
-
-            if (!stratum_connect(&stratum, stratum.url)
-                    || !stratum_subscribe(&stratum)
-                    || !stratum_authorize(&stratum, rpc_user, rpc_pass)) {
-                stratum_disconnect(&stratum);
-                if (opt_retries >= 0 && ++failures > opt_retries) {
-                    applog(LOG_ERR, "...terminating workio thread");
-                    tq_push(thr_info[work_thr_id].q, NULL );
-                    goto out;
+            can_work = false;
+            clean_stratum(stratum);
+            g_work_time = 0;
+            g_work_update_time = 0;
+            pthread_mutex_unlock(&g_work_lock);
+        }
+        while (!stratum->curl)
+        {
+            pthread_mutex_lock(&pool_lock);
+            pool = get_active_pool(pools);
+            pthread_mutex_unlock(&pool_lock);
+            if(pool == NULL)
+            {
+                applog(LOG_ERR, "Stratum pool info incomplete");
+                goto out;
+            }
+            stratum->url = pool->rpc_url;
+            if(!reconnect)
+                applog(LOG_INFO, "Starting Stratum on %s", stratum->url);
+            reconnect = false;
+            if (!stratum_connect(stratum, stratum->url) ||
+                !stratum_subscribe(stratum) ||
+                !stratum_authorize(stratum, pool->rpc_user, pool->rpc_pass)) {
+                stratum_disconnect(stratum);
+                reconnect = true;
+                if (opt_retries >= 0 && ++failures > opt_retries)
+                {
+                    failures = 0;
+                    pthread_mutex_lock(&pool_lock);
+                    pool = get_next_pool(pools);
+                    set_active_pool(pools, pool, true);
+                    main_pool = get_main_pool(pools);
+                    pthread_mutex_unlock(&pool_lock);
+                    if(pool != main_pool)
+                    {
+                        pthread_cond_signal(&check_pool_cond);
+                    }
+                    if(switch_lock)
+                    {
+                        switch_lock = false;
+                        pthread_mutex_unlock(&switch_pool_lock);
+                    }
+                    applog(LOG_INFO, "Switching to pool: %s", pool->rpc_url);
+                    switched = true;
+                    goto login;
                 }
                 applog(LOG_ERR, "...retry after %d seconds", opt_fail_pause);
                 sleep(opt_fail_pause);
             }
-        }
-
-        if (jsonrpc_2) {
-            if (stratum.work.job_id
-                    && (!g_work_time
-                            || strcmp(stratum.work.job_id, g_work.job_id))) {
-                pthread_mutex_lock(&g_work_lock);
-                stratum_gen_work(&stratum, &g_work);
-                time(&g_work_time);
-                pthread_mutex_unlock(&g_work_lock);
-                applog(LOG_INFO, "Stratum detected new block");
-                restart_threads();
+            memset(g_work.xnonce2, 0, 8);
+            if(g_work_update_time)
+                g_work_update_time = 0;
+            gettimeofday(&timestr, NULL);
+            pthread_mutex_lock(&pool_lock);
+            pool_stats = get_pool_stats(pool);
+            if(pool_stats != NULL)
+            {
+                pool_stats->time_stop = timestr.tv_sec;
+                if(pool_stats->shares)
+                    pool_stats = new_pool_stats(pool);
             }
-        } else {
-            if (stratum.job.job_id
-                    && (!g_work_time
-                            || strcmp(stratum.job.job_id, g_work.job_id))) {
+            else
+                pool_stats = new_pool_stats(pool);
+            pool_stats->time_start = timestr.tv_sec;
+            pthread_mutex_unlock(&pool_lock);
+        }
+        can_work = true;
+        restarted = 0;
+        if (jsonrpc_2) {
+            if (stratum->job.job_id &&
+                (strcmp(stratum->job.job_id, g_work.job_id) || !g_work_time || !g_work_update_time)) {
                 pthread_mutex_lock(&g_work_lock);
-                stratum_gen_work(&stratum, &g_work);
-                time(&g_work_time);
-                pthread_mutex_unlock(&g_work_lock);
-                if (stratum.job.clean) {
+                pthread_mutex_lock(&stratum->work_lock);
+                if (stratum->job.clean || time(NULL) >= g_work_update_time + 60)
+                {
+                    
                     applog(LOG_INFO, "Stratum detected new block");
                     restart_threads();
+                    gettimeofday(&timestr, NULL);
+                    work_id = (timestr.tv_sec & 0xffff) << 16 | (timestr.tv_usec & 0xffff);
+                    restarted = 1;
+                    time(&g_work_update_time);
                 }
+                applog(LOG_INFO, "New Job_id: %s Diff: %d Work_id: %08x", stratum->job.job_id, (int) (stratum->job.diff), work_id);
+                strcpy(g_work.job_id, stratum->job.job_id);
+                diff_to_target(g_work.target, stratum->job.diff / 65536.0);
+                g_work.work_id = work_id;
+                time(&g_work_time);
+                pthread_mutex_unlock(&stratum->work_lock);
+                pthread_mutex_unlock(&g_work_lock);
             }
-        }
+        } else {
+            if (stratum->job.job_id &&
+                (strcmp(stratum->job.job_id, g_work.job_id) || !g_work_time || !g_work_update_time)) {
+                pthread_mutex_lock(&g_work_lock);
+                pthread_mutex_lock(&stratum->work_lock);
+                if (stratum->job.clean || time(NULL) >= g_work_update_time + 60)
+                {
+                    if(stratum->job.clean)
+                        applog(LOG_INFO, "Stratum detected new block");
+                    restart_threads();
+                    gettimeofday(&timestr, NULL);
+                    work_id = (timestr.tv_sec & 0xffff) << 16 | (timestr.tv_usec & 0xffff);
+                    restarted = 1;
+                    time(&g_work_update_time);
+                }
+                applog(LOG_INFO, "New Job_id: %s Diff: %d Work_id: %08x", stratum->job.job_id, (int) (stratum->job.diff), work_id);
+                strcpy(g_work.job_id, stratum->job.job_id);
+                diff_to_target(g_work.target, stratum->job.diff / 65536.0);
+                g_work.work_id = work_id;
+                time(&g_work_time);
+                pthread_mutex_unlock(&stratum->work_lock);
+                pthread_mutex_unlock(&g_work_lock);
 
-        if (!stratum_socket_full(&stratum, 120)) {
+        if (!stratum_socket_full(stratum, 60)) {
             applog(LOG_ERR, "Stratum connection timed out");
             s = NULL;
         } else
-            s = stratum_recv_line(&stratum);
+            s = stratum_recv_line(stratum);
         if (!s) {
-            stratum_disconnect(&stratum);
+            stratum_disconnect(stratum);
             applog(LOG_ERR, "Stratum connection interrupted");
+            if(switch_lock)
+            {
+                switch_lock = false;
+                pthread_mutex_unlock(&switch_pool_lock);
+            }
             continue;
         }
-        if (!stratum_handle_method(&stratum, s))
+        if (!stratum_handle_method(stratum, s))
             stratum_handle_response(s);
+        else if(!restarted)
+        {
+            if(stratum->job.diff != stratum->next_diff && stratum->next_diff > 0)
+            {
+                pthread_mutex_lock(&g_work_lock);
+                pthread_mutex_lock(&stratum->work_lock);
+                restart_threads();
+                applog(LOG_INFO, "Stratum difficulty changed");
+                gettimeofday(&timestr, NULL);
+                work_id = (timestr.tv_sec & 0xffff) << 16 | (timestr.tv_usec & 0xffff);
+                stratum->job.diff = stratum->next_diff;
+                applog(LOG_INFO, "Diff: %d Work_id: %08x", (int) (stratum->job.diff), work_id);
+                diff_to_target(g_work.target, stratum->job.diff / 65536.0);
+                g_work.work_id = work_id;
+                time(&g_work_update_time);
+                time(&g_work_time);
+                pthread_mutex_unlock(&stratum->work_lock);
+                pthread_mutex_unlock(&g_work_lock);
+            }
+        }
         free(s);
+        if(switch_lock)
+        {
+            switch_lock = false;
+            pthread_mutex_unlock(&switch_pool_lock);
+            usleep(1000);
+        }
     }
 
-    out: return NULL ;
+out:
+    return NULL;
+}
+
+static void *switch_pool_handler(void *id)
+{
+    pthread_detach(pthread_self());
+    struct pool_details *pool;
+    int pool_id = *(int*)id;
+    free(id);
+    pthread_mutex_lock(&switch_pool_lock);
+    pthread_mutex_lock(&pool_lock);
+    pool = get_pool(pools, pool_id);
+    if(pool != NULL)
+    {
+        applog(LOG_DEBUG, "API: Switching to pool %d", pool_id);
+        clear_pool_tried(pools);
+        set_active_pool(pools, pool, true);
+        must_switch = true;
+    }
+    pthread_mutex_unlock(&pool_lock);
+    pthread_mutex_unlock(&switch_pool_lock);
+    return NULL;
+}
+
+static void *check_pool_thread()
+{
+    static struct pool_details *main_pool;
+    static struct pool_details *active_pool;
+    while(1)
+    {
+        pthread_mutex_lock(&pool_lock);
+        main_pool = get_main_pool(pools);
+        active_pool = get_active_pool(pools);
+        pthread_mutex_unlock(&pool_lock);
+        if(active_pool != main_pool)
+        {
+            applog(LOG_INFO, "Checking main pool: %s", main_pool->rpc_url);
+            if(check_pool_alive(main_pool))
+            {
+                pthread_mutex_lock(&switch_pool_lock);
+                applog(LOG_INFO, "Main pool is alive, attempting to switch");
+                pthread_mutex_lock(&pool_lock);
+                clear_pool_tried(pools);
+                set_active_pool(pools, main_pool, true);
+                pthread_mutex_unlock(&pool_lock);
+                must_switch = true;
+                pthread_mutex_unlock(&switch_pool_lock);
+                goto wait;
+            }
+        }
+        else
+        {
+wait:
+            pthread_mutex_lock(&check_pool_lock);
+            pthread_cond_wait(&check_pool_cond, &check_pool_lock);
+            pthread_mutex_unlock(&check_pool_lock);
+        }
+        sleep(60);
+    }
+    return NULL;
 }
 
 static void show_version_and_exit(void) {
@@ -2065,6 +2227,21 @@ int main(int argc, char *argv[]) {
     unsigned int tmp1, tmp2, tmp3, tmp4;
     long flags;
     int i;
+
+    pthread_mutex_init(&applog_lock, NULL);
+    pthread_mutex_init(&stats_lock, NULL);
+    pthread_mutex_init(&tui_lock, NULL);
+    pthread_mutex_init(&g_work_lock, NULL);
+    pthread_mutex_init(&work_items_lock, NULL);
+    pthread_mutex_init(&pool_lock, NULL);
+    pthread_mutex_init(&check_pool_lock, NULL);
+    pthread_mutex_init(&switch_pool_lock, NULL);
+    stratum = calloc(1, sizeof(struct stratum_ctx));
+    pthread_mutex_init(&stratum->sock_lock, NULL);
+    pthread_mutex_init(&stratum->work_lock, NULL);
+    pthread_cond_init(&check_pool_cond, NULL);
+
+    time(&time_start);
 	
 	#ifndef USE_LOBOTOMIZED_AES
 	// If the CPU doesn't support CPUID feature
@@ -2093,8 +2270,8 @@ int main(int argc, char *argv[]) {
 	if(geteuid()) applog(LOG_INFO, "I go faster as root.");
 	#endif
 	
-    rpc_user = strdup("");
-    rpc_pass = strdup("");
+    //rpc_user = strdup("");
+    //rpc_pass = strdup("");
 
     /* parse command line */
     parse_cmdline(argc, argv);
@@ -2102,7 +2279,7 @@ int main(int argc, char *argv[]) {
     jsonrpc_2 = true;
     applog(LOG_INFO, "Using JSON-RPC 2.0");
 
-
+    /*
     if (!opt_benchmark && !rpc_url) {
         fprintf(stderr, "%s: no URL supplied\n", argv[0]);
         show_usage_and_exit(1);
@@ -2114,16 +2291,18 @@ int main(int argc, char *argv[]) {
             return 1;
         sprintf(rpc_userpass, "%s:%s", rpc_user, rpc_pass);
     }
+    */
 
-    pthread_mutex_init(&applog_lock, NULL );
-    pthread_mutex_init(&stats_lock, NULL );
-    pthread_mutex_init(&g_work_lock, NULL );
-    pthread_mutex_init(&rpc2_job_lock, NULL );
-    pthread_mutex_init(&stratum.sock_lock, NULL );
-    pthread_mutex_init(&stratum.work_lock, NULL );
 
-    flags = !opt_benchmark && strncmp(rpc_url, "https:", 6) ?
-            (CURL_GLOBAL_ALL & ~CURL_GLOBAL_SSL) : CURL_GLOBAL_ALL;
+    struct pool_details *pool = get_main_pool(pools);
+    if(pool == NULL)
+    {
+        pool = new_pool(true);
+        set_active_pool(pools, pool, true);
+    }
+    flags = strncmp(pool->rpc_url, "https:", 6)
+          ? (CURL_GLOBAL_ALL & ~CURL_GLOBAL_SSL)
+          : CURL_GLOBAL_ALL;
     if (curl_global_init(flags)) {
         applog(LOG_ERR, "CURL initialization failed");
         return 1;
@@ -2196,6 +2375,15 @@ int main(int argc, char *argv[]) {
     /* start work I/O thread */
     if (pthread_create(&thr->pth, NULL, workio_thread, thr)) {
         applog(LOG_ERR, "workio thread create failed");
+        return 1;
+    }
+
+    check_pool_thr_id = opt_n_threads + 6;
+    thr = &thr_info[check_pool_thr_id];
+    thr->id = check_pool_thr_id;
+    /* start check_pool thread */
+    if (unlikely(pthread_create(&thr->pth, NULL, check_pool_thread, thr))) {
+        applog(LOG_ERR, "check_pool thread create failed");
         return 1;
     }
 

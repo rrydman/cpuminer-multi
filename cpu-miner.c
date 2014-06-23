@@ -42,7 +42,7 @@
 #include "compat.h"
 #include "miner.h"
 #include "cryptonight.h"
- #include "elist.h"
+#include "elist.h"
 
 #if defined __unix__ && (!defined __APPLE__)
 #include <sys/mman.h>
@@ -52,6 +52,7 @@
 
 #define PROGRAM_NAME		"minerd"
 #define DEF_RPC_URL        "http://127.0.0.1:9332/"
+ #define MINER_VERSION  "v1.1"
 #define LP_SCANTIME		60
 #define JSON_BUF_LEN 345
 
@@ -1768,6 +1769,7 @@ static void parse_arg (int key, char *arg, char *pname)
 
     switch (key) {
     case 'a':
+        int i;
         for (i = 0; i < ARRAY_SIZE(algo_names); i++) {
             if (algo_names[i] && !strcmp(arg, algo_names[i])) {
                 //opt_algo = i;
@@ -1917,7 +1919,7 @@ static void parse_arg (int key, char *arg, char *pname)
 }
 
 static void parse_config(char *pname)
-    int i;
+    int i, j, k;
     json_t *val;
 
     if (!json_is_object(opt_config))

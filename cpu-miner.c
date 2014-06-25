@@ -2454,6 +2454,8 @@ int main(int argc, char *argv[]) {
     if (pthread_create(&thr->pth, NULL, workio_thread, thr)) {
         applog(LOG_ERR, "workio thread create failed");
         return 1;
+    } else {
+    	applog(LOG_INFO, "Work IO Thread Created.");
     }
 
     check_pool_thr_id = opt_n_threads + 6;
@@ -2463,6 +2465,8 @@ int main(int argc, char *argv[]) {
     if (unlikely(pthread_create(&thr->pth, NULL, check_pool_thread, thr))) {
         applog(LOG_ERR, "check_pool thread create failed");
         return 1;
+    }else {
+    	applog(LOG_INFO, "Check Pool Thread Created.");
     }
 
     if (want_longpoll && !have_stratum) {
@@ -2478,6 +2482,8 @@ int main(int argc, char *argv[]) {
         if (unlikely(pthread_create(&thr->pth, NULL, longpoll_thread, thr))) {
             applog(LOG_ERR, "longpoll thread create failed");
             return 1;
+        } else {
+    		applog(LOG_INFO, "Longpoll Thread Created.");
         }
     }
     if (want_stratum) {
@@ -2493,7 +2499,9 @@ int main(int argc, char *argv[]) {
         if (unlikely(pthread_create(&thr->pth, NULL, stratum_thread, thr))) {
             applog(LOG_ERR, "stratum thread create failed");
             return 1;
-        }
+        }else {
+    		applog(LOG_INFO, "Stratum Thread Created");
+     }
 
         if (have_stratum)
             tq_push(thr_info[stratum_thr_id].q, strdup(rpc_url));

@@ -936,6 +936,7 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
 
         if (unlikely(!stratum_send_line(stratum, s))) {
             applog(LOG_ERR, "submit_upstream_work stratum_send_line failed");
+            can_work = false;
             goto out;
         }
         can_work = true;

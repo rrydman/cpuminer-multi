@@ -961,6 +961,7 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
             val = json_rpc2_call(curl, rpc_url, rpc_userpass, s, NULL, 0);
             if (unlikely(!val)) {
                 applog(LOG_ERR, "submit_upstream_work json_rpc_call failed");
+                can_work = false;
                 goto out;
             }
             res = json_object_get(val, "result");
@@ -985,6 +986,7 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
             val = json_rpc_call(curl, rpc_url, rpc_userpass, s, NULL, 0);
             if (unlikely(!val)) {
                 applog(LOG_ERR, "submit_upstream_work json_rpc_call failed");
+                can_work = false;
                 goto out;
             }
             res = json_object_get(val, "result");

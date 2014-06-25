@@ -1043,7 +1043,7 @@ static bool get_upstream_work(CURL *curl, struct work *work) {
     }
 
     json_decref(val);
-	printf("Work received from pool. Starting hashing...")
+	printf("Work received from pool. Starting hashing...");
     return rc;
 }
 

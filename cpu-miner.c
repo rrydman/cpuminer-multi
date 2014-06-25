@@ -938,6 +938,7 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
             applog(LOG_ERR, "submit_upstream_work stratum_send_line failed");
             goto out;
         }
+        can_work = true;
     } else {
         /* build JSON-RPC request */
         if(jsonrpc_2) {
@@ -990,7 +991,7 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
             share_result(json_is_true(res), work,
                     reason ? json_string_value(reason) : NULL );
         }
-
+	can_work = true;
         json_decref(val);
     }
 
@@ -1149,6 +1150,7 @@ static bool workio_submit_work(struct workio_cmd *wc, CURL *curl) {
     while (!submit_upstream_work(curl, wc->u.work)) {
         if (unlikely((opt_retries >= 0) && (++failures > opt_retries))) {
             applog(LOG_ERR, "...terminating workio thread");
+            must_switch = true;
             return false;
         }
 

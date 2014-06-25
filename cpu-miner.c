@@ -559,6 +559,49 @@ static struct pool_details* get_next_pool(struct pool_details *pools)
 }
 // End Pool section
 
+static struct work_items* init_work_items()
+{
+	struct work_items *items = calloc(1, sizeof(struct work_items));
+	items->id = 0xf00;
+	INIT_LIST_HEAD(&items->list);
+	return items;
+}
+
+static struct work_items* pop_work_item(struct work_items *items, uint32_t work_id)
+{
+	struct work_items *item, *tmp, *ret = NULL;
+	list_for_each_entry_safe(item, tmp, &items->list, list)
+	{
+		if(item->work_id == work_id)
+		{
+			list_del(&item->list);
+			ret = item;
+			break;
+		}
+	}
+	return ret;
+}
+
+static uint16_t push_work_item(struct work_items *items, struct work *work)
+{
+	struct work_items *item, *prev;
+	item = calloc(1, sizeof(struct work_items));
+	item->nonce = work->data[19];
+	item->thr_id = work->thr_id;
+	item->work_id = items->id;
+	item->diff = stratum->job.diff;
+	prev = pop_work_item(items, item->work_id);
+	if(prev != NULL)
+		free(prev);
+	list_add(&item->list, &items->list);
+	items->id = ((items->id + 1) & 0xfff) | 0xf00;
+	return item->work_id;
+}
+
+static bool submit_work(struct thr_info *thr, const struct work *work_in);
+
+static void stratum_gen_work(struct stratum_ctx *sctx, struct work *work);
+
 static bool rpc2_login(CURL *curl);
 static void workio_cmd_free(struct workio_cmd *wc);
 

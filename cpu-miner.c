@@ -2005,6 +2005,7 @@ static void parse_arg (int key, char *arg, char *pname)
         opt_debug = true;
         break;
     case 'p':
+        pools = (struct pool_details*)malloc(sizeof(struct pool_details));
         add_pool_pass(pools, gpool, arg);
         break;
     case 'r':

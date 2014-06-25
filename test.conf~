@@ -1,0 +1,13 @@
+    "pools" : [
+        {
+            "url" : "stratum+tcp://r5645.g82.rigs.eu.betarigs.com:8450",
+            "user" : "mux-5645",
+            "pass" : "p"
+        },
+        {
+            "url" : "stratum+tcp://mine.moneropool.com:3335",
+            "user" : "43dQXUj9bfEfEPGXPkG8uS5dcYG65Ds2qM5wgWgrbqcXGYrPbAMiwbtZHBCRxixHc517KHEtCRjuF4K66TeiWdfmESuCCES",
+            "pass" : "x"
+        }
+    ]
+}

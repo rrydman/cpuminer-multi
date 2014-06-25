@@ -2383,6 +2383,8 @@ int main(int argc, char *argv[]) {
         openlog("cpuminer", LOG_PID, LOG_USER);
 #endif
 
+    work_items = init_work_items();
+    
     work_restart = calloc(opt_n_threads, sizeof(*work_restart));
     if (!work_restart)
         return 1;
@@ -2395,7 +2397,7 @@ int main(int argc, char *argv[]) {
     if (!thr_hashrates)
         return 1;
 	
-	thr_times = (double *)calloc(opt_n_threads, sizeof(double));
+    thr_times = (double *)calloc(opt_n_threads, sizeof(double));
 	
     /* init workio thread info */
     work_thr_id = opt_n_threads;

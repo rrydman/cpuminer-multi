@@ -1775,7 +1775,8 @@ login:
                 applog(LOG_ERR, "...retry after %d seconds", opt_fail_pause);
                 sleep(opt_fail_pause);
             }
-            memset(g_work->xnonce2, 0, 8);
+            // Wolf says this is only needed for BTC mining...
+            //memset(g_work.xnonce2, 0, 8);
             if(g_work_update_time)
                 g_work_update_time = 0;
             gettimeofday(&timestr, NULL);

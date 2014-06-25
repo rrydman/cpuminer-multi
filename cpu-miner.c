@@ -667,16 +667,16 @@ json_t *json_rpc2_call(CURL *curl, const char *url,
 
 static inline void work_free(struct work *w) {
     free(w->job_id);
-    free(w->xnonce2);
+    //free(w->xnonce2);
 }
 
 static inline void work_copy(struct work *dest, const struct work *src) {
     memcpy(dest, src, sizeof(struct work));
     if (src->job_id)
         dest->job_id = strdup(src->job_id);
-    if (src->xnonce2) {
-        dest->xnonce2 = malloc(src->xnonce2_len);
-        memcpy(dest->xnonce2, src->xnonce2, src->xnonce2_len);
+    //if (src->xnonce2) {
+    //    dest->xnonce2 = malloc(src->xnonce2_len);
+    //    memcpy(dest->xnonce2, src->xnonce2, src->xnonce2_len);
     }
 }
 
@@ -925,12 +925,12 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
             le32enc(&nonce, work->data[19]);
             ntimestr = bin2hex((const unsigned char *) (&ntime), 4);
             noncestr = bin2hex((const unsigned char *) (&nonce), 4);
-            xnonce2str = bin2hex(work->xnonce2, work->xnonce2_len);
-            snprintf(s, JSON_BUF_LEN,
-                    "{\"method\": \"mining.submit\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\":4}",
-                    pool->rpc_user, work->job_id, xnonce2str, ntimestr, noncestr);
+            //xnonce2str = bin2hex(work->xnonce2, work->xnonce2_len);
+            //snprintf(s, JSON_BUF_LEN,
+            //        "{\"method\": \"mining.submit\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\":4}",
+            //        pool->rpc_user, work->job_id, xnonce2str, ntimestr, noncestr);
             free(ntimestr);
-            free(xnonce2str);
+            //free(xnonce2str);
         }
         free(noncestr);
 

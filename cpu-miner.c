@@ -677,7 +677,7 @@ static inline void work_copy(struct work *dest, const struct work *src) {
     //if (src->xnonce2) {
     //    dest->xnonce2 = malloc(src->xnonce2_len);
     //    memcpy(dest->xnonce2, src->xnonce2, src->xnonce2_len);
-    }
+    //}
 }
 
 static bool jobj_binary(const json_t *obj, const char *key, void *buf,
